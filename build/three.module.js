@@ -2863,43 +2863,28 @@ function LinearToSRGB( c ) {
 
 
 /**
- * Matrices for sRGB and Display P3, based on the W3C specifications
- * for sRGB and Display P3, and the ICC specification for the D50
- * connection space.
+ * Matrices converting P3 <-> Rec. 709 primaries, without gamut mapping
+ * or clipping. Based on W3C specifications for sRGB and Display P3,
+ * and ICC specifications for the D50 connection space. Values in/out
+ * are _linear_ sRGB and _linear_ Display P3.
+ *
+ * Note that both sRGB and Display P3 use the sRGB transfer functions.
  *
  * Reference:
  * - http://www.russellcottrell.com/photo/matrixCalculator.htm
  */
 
-const SRGB_TO_DISPLAY_P3 = new Matrix3().multiplyMatrices(
-	// XYZ to Display P3
-	new Matrix3().set(
-		2.4039840, - 0.9899069, - 0.3976415,
-		- 0.8422229, 1.7988437, 0.0160354,
-		0.0482059, - 0.0974068, 1.2740049,
-	),
-	// sRGB to XYZ
-	new Matrix3().set(
-		0.4360413, 0.3851129, 0.1430458,
-		0.2224845, 0.7169051, 0.0606104,
-		0.0139202, 0.0970672, 0.7139126,
-	),
-);
+const LINEAR_SRGB_TO_LINEAR_DISPLAY_P3 = new Matrix3().fromArray( [
+	0.8224621, 0.0331941, 0.0170827,
+	0.1775380, 0.9668058, 0.0723974,
+	- 0.0000001, 0.0000001, 0.9105199
+] );
 
-const DISPLAY_P3_TO_SRGB = new Matrix3().multiplyMatrices(
-	// XYZ to sRGB
-	new Matrix3().set(
-		3.1341864, - 1.6172090, - 0.4906941,
-		- 0.9787485, 1.9161301, 0.0334334,
-		0.0719639, - 0.2289939, 1.4057537,
-	),
-	// Display P3 to XYZ
-	new Matrix3().set(
-		0.5151187, 0.2919778, 0.1571035,
-		0.2411892, 0.6922441, 0.0665668,
-		- 0.0010505, 0.0418791, 0.7840713,
-	),
-);
+const LINEAR_DISPLAY_P3_TO_LINEAR_SRGB = new Matrix3().fromArray( [
+	1.2249401, - 0.0420569, - 0.0196376,
+	- 0.2249404, 1.0420571, - 0.0786361,
+	0.0000001, 0.0000000, 1.0982735
+] );
 
 const _vector$c = new Vector3();
 
@@ -2907,7 +2892,7 @@ function DisplayP3ToLinearSRGB( color ) {
 
 	color.convertSRGBToLinear();
 
-	_vector$c.set( color.r, color.g, color.b ).applyMatrix3( DISPLAY_P3_TO_SRGB );
+	_vector$c.set( color.r, color.g, color.b ).applyMatrix3( LINEAR_DISPLAY_P3_TO_LINEAR_SRGB );
 
 	return color.setRGB( _vector$c.x, _vector$c.y, _vector$c.z );
 
@@ -2915,7 +2900,7 @@ function DisplayP3ToLinearSRGB( color ) {
 
 function LinearSRGBToDisplayP3( color ) {
 
-	_vector$c.set( color.r, color.g, color.b ).applyMatrix3( SRGB_TO_DISPLAY_P3 );
+	_vector$c.set( color.r, color.g, color.b ).applyMatrix3( LINEAR_SRGB_TO_LINEAR_DISPLAY_P3 );
 
 	return color.setRGB( _vector$c.x, _vector$c.y, _vector$c.z ).convertLinearToSRGB();
 
@@ -3314,7 +3299,7 @@ class Texture extends EventDispatcher {
 
 	}
 
-	set image( value ) {
+	set image( value = null ) {
 
 		this.source.data = value;
 
@@ -10903,10 +10888,6 @@ class BufferGeometry extends EventDispatcher {
 
 		this.userData = source.userData;
 
-		// geometry generator parameters
-
-		if ( source.parameters !== undefined ) this.parameters = Object.assign( {}, source.parameters );
-
 		return this;
 
 	}
@@ -11461,6 +11442,16 @@ class BoxGeometry extends BufferGeometry {
 			numberOfVertices += vertexCounter;
 
 		}
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
 
 	}
 
@@ -12981,6 +12972,16 @@ class PlaneGeometry extends BufferGeometry {
 
 	}
 
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
+
+	}
+
 	static fromJSON( data ) {
 
 		return new PlaneGeometry( data.width, data.height, data.widthSegments, data.heightSegments );
@@ -14021,7 +14022,7 @@ function WebGLBackground( renderer, cubemaps, cubeuvmaps, state, objects, alpha,
 			if ( boxMesh === undefined ) {
 
 				boxMesh = new Mesh(
-					new BoxGeometry( 1, 1, 1 ),
+					new BoxGeometry( 10000, 10000, 10000 ),
 					new ShaderMaterial( {
 						name: 'BackgroundCubeMaterial',
 						uniforms: cloneUniforms( ShaderLib.backgroundCube.uniforms ),
@@ -18728,6 +18729,8 @@ function WebGLProgram( renderer, cacheKey, parameters, bindingStates ) {
 	let prefixVertex, prefixFragment;
 	let versionString = parameters.glslVersion ? '#version ' + parameters.glslVersion + '\n' : '';
 
+	var numMultiviewViews = parameters.numMultiviewViews;
+
 	if ( parameters.isRawShaderMaterial ) {
 
 		prefixVertex = [
@@ -19054,6 +19057,51 @@ function WebGLProgram( renderer, cacheKey, parameters, bindingStates ) {
 			'#define textureCubeGradEXT textureGrad'
 		].join( '\n' ) + '\n' + prefixFragment;
 
+		// Multiview
+
+		if ( numMultiviewViews > 0 ) {
+
+			prefixVertex = 	[
+				'#extension GL_OVR_multiview : require',
+				'layout(num_views = ' + numMultiviewViews + ') in;',
+				'#define VIEW_ID gl_ViewID_OVR'
+			].join( '\n' ) + '\n' + prefixVertex;
+
+			prefixVertex = prefixVertex.replace(
+				[
+					'uniform mat4 modelViewMatrix;',
+					'uniform mat4 projectionMatrix;',
+					'uniform mat4 viewMatrix;',
+					'uniform mat3 normalMatrix;'
+				].join( '\n' ),
+				[
+					'uniform mat4 modelViewMatrices[' + numMultiviewViews + '];',
+					'uniform mat4 projectionMatrices[' + numMultiviewViews + '];',
+					'uniform mat4 viewMatrices[' + numMultiviewViews + '];',
+					'uniform mat3 normalMatrices[' + numMultiviewViews + '];',
+
+					'#define modelViewMatrix modelViewMatrices[VIEW_ID]',
+					'#define projectionMatrix projectionMatrices[VIEW_ID]',
+					'#define viewMatrix viewMatrices[VIEW_ID]',
+					'#define normalMatrix normalMatrices[VIEW_ID]'
+				].join( '\n' )
+			);
+
+			prefixFragment = [
+				'#extension GL_OVR_multiview : require',
+				'#define VIEW_ID gl_ViewID_OVR'
+			].join( '\n' ) + '\n' + prefixFragment;
+
+			prefixFragment = prefixFragment.replace(
+				'uniform mat4 viewMatrix;',
+				[
+					'uniform mat4 viewMatrices[' + numMultiviewViews + '];',
+					'#define viewMatrix viewMatrices[VIEW_ID]'
+				].join( '\n' )
+			);
+
+		}
+
 	}
 
 	const vertexGlsl = versionString + prefixVertex + vertexShader;
@@ -19207,6 +19255,7 @@ function WebGLProgram( renderer, cacheKey, parameters, bindingStates ) {
 	this.program = program;
 	this.vertexShader = glVertexShader;
 	this.fragmentShader = glFragmentShader;
+	this.numMultiviewViews = numMultiviewViews;
 
 	return this;
 
@@ -19427,6 +19476,8 @@ function WebGLPrograms( renderer, cubemaps, cubeuvmaps, extensions, capabilities
 
 		const currentRenderTarget = renderer.getRenderTarget();
 
+		const numMultiviewViews = currentRenderTarget && currentRenderTarget.isWebGLMultiviewRenderTarget ? currentRenderTarget.numViews : 0;
+
 		const useAlphaTest = material.alphaTest > 0;
 		const useClearcoat = material.clearcoat > 0;
 		const useIridescence = material.iridescence > 0;
@@ -19454,6 +19505,8 @@ function WebGLPrograms( renderer, cubemaps, cubeuvmaps, extensions, capabilities
 			instancingColor: object.isInstancedMesh === true && object.instanceColor !== null,
 
 			supportsVertexTextures: vertexTextures,
+			numMultiviewViews: numMultiviewViews,
+
 			outputEncoding: ( currentRenderTarget === null ) ? renderer.outputEncoding : ( currentRenderTarget.isXRRenderTarget === true ? currentRenderTarget.texture.encoding : LinearEncoding ),
 			map: !! material.map,
 			matcap: !! material.matcap,
@@ -19770,6 +19823,8 @@ function WebGLPrograms( renderer, cubemaps, cubeuvmaps, extensions, capabilities
 			_programLayers.enable( 23 );
 		if ( parameters.opaque )
 			_programLayers.enable( 24 );
+		if ( parameters.numMultiviewViews )
+			_programLayers.enable( 25 );
 
 		array.push( _programLayers.mask );
 
@@ -22574,11 +22629,14 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 	const maxSamples = capabilities.maxSamples;
 	const multisampledRTTExt = extensions.has( 'WEBGL_multisampled_render_to_texture' ) ? extensions.get( 'WEBGL_multisampled_render_to_texture' ) : null;
 	const supportsInvalidateFramebuffer = typeof navigator === 'undefined' ? false : /OculusBrowser/g.test( navigator.userAgent );
+	const multiviewExt = extensions.has( 'OCULUS_multiview' ) ? extensions.get( 'OCULUS_multiview' ) : null;
 
 	const _videoTextures = new WeakMap();
 	let _canvas;
 
 	const _sources = new WeakMap(); // maps WebglTexture objects to instances of Source
+
+	let _deferredUploads = [];
 
 	// cordova iOS (as of 5.0) still uses UIWebView, which provides OffscreenCanvas,
 	// also OffscreenCanvas.getContext("webgl"), but not OffscreenCanvas.getContext("2d")!
@@ -23016,8 +23074,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 			} else {
 
-				uploadTexture( textureProperties, texture, slot );
-				return;
+				if ( this.uploadTexture( textureProperties, texture, slot ) ) {
+
+					return;
+
+				}
 
 			}
 
@@ -23033,7 +23094,7 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 		if ( texture.version > 0 && textureProperties.__version !== texture.version ) {
 
-			uploadTexture( textureProperties, texture, slot );
+			this.uploadTexture( textureProperties, texture, slot );
 			return;
 
 		}
@@ -23048,7 +23109,7 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 		if ( texture.version > 0 && textureProperties.__version !== texture.version ) {
 
-			uploadTexture( textureProperties, texture, slot );
+			this.uploadTexture( textureProperties, texture, slot );
 			return;
 
 		}
@@ -23095,7 +23156,7 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 			_gl.texParameteri( textureType, 10242, wrappingToGL[ texture.wrapS ] );
 			_gl.texParameteri( textureType, 10243, wrappingToGL[ texture.wrapT ] );
 
-			if ( textureType === 32879 || textureType === 35866 ) {
+			if ( ( textureType === 32879 || textureType === 35866 ) && texture.wrapR !== undefined ) {
 
 				_gl.texParameteri( textureType, 32882, wrappingToGL[ texture.wrapR ] );
 
@@ -23232,7 +23293,39 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 	}
 
+	function runDeferredUploads() {
+
+		const previousDeferSetting = this.deferTextureUploads;
+		this.deferTextureUploads = false;
+
+		for ( const upload of _deferredUploads ) {
+
+			this.uploadTexture( upload.textureProperties, upload.texture, upload.slot );
+			upload.texture.isPendingDeferredUpload = false;
+
+		}
+
+		_deferredUploads = [];
+
+		this.deferTextureUploads = previousDeferSetting;
+
+	}
+
 	function uploadTexture( textureProperties, texture, slot ) {
+
+		if ( this.deferTextureUploads ) {
+
+			if ( ! texture.isPendingDeferredUpload ) {
+
+				texture.isPendingDeferredUpload = true;
+				_deferredUploads.push( { textureProperties: textureProperties, texture: texture, slot: slot } );
+
+			}
+
+			return false;
+
+		}
+
 
 		let textureType = 3553;
 
@@ -23646,6 +23739,7 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 		}
 
 		textureProperties.__version = texture.version;
+		return true;
 
 	}
 
@@ -23868,7 +23962,11 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 		if ( ! renderTargetProperties.__hasExternalTextures ) {
 
-			if ( textureTarget === 32879 || textureTarget === 35866 ) {
+			if ( renderTarget.isWebGLMultiviewRenderTarget === true ) {
+
+				state.texStorage3D( 35866, 0, glInternalFormat, renderTarget.width, renderTarget.height, renderTarget.numViews );
+
+			} else if ( textureTarget === 32879 || textureTarget === 35866 ) {
 
 				state.texImage3D( textureTarget, 0, glInternalFormat, renderTarget.width, renderTarget.height, renderTarget.depth, 0, glFormat, glType, null );
 
@@ -23881,14 +23979,31 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 		}
 
 		state.bindFramebuffer( 36160, framebuffer );
+		const multisampled = useMultisampledRTT( renderTarget );
 
-		if ( useMultisampledRTT( renderTarget ) ) {
+		if ( renderTarget.isWebGLMultiviewRenderTarget === true ) {
 
-			multisampledRTTExt.framebufferTexture2DMultisampleEXT( 36160, attachment, textureTarget, properties.get( texture ).__webglTexture, 0, getRenderTargetSamples( renderTarget ) );
+			if ( multisampled ) {
+
+				multiviewExt.framebufferTextureMultisampleMultiviewOVR( 36160, 36064, properties.get( texture ).__webglTexture, 0, getRenderTargetSamples( renderTarget ), 0, renderTarget.numViews );
+
+			} else {
+
+				multiviewExt.framebufferTextureMultiviewOVR( 36160, 36064, properties.get( texture ).__webglTexture, 0, 0, renderTarget.numViews );
+
+			}
 
 		} else if ( textureTarget === 3553 || ( textureTarget >= 34069 && textureTarget <= 34074 ) ) { // see #24753
 
-			_gl.framebufferTexture2D( 36160, attachment, textureTarget, properties.get( texture ).__webglTexture, 0 );
+			if ( multisampled ) {
+
+				multisampledRTTExt.framebufferTexture2DMultisampleEXT( 36160, attachment, textureTarget, properties.get( texture ).__webglTexture, 0, getRenderTargetSamples( renderTarget ) );
+
+			} else {
+
+				_gl.framebufferTexture2D( 36160, attachment, textureTarget, properties.get( texture ).__webglTexture, 0 );
+
+			}
 
 		}
 
@@ -23902,7 +24017,59 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 		_gl.bindRenderbuffer( 36161, renderbuffer );
 
-		if ( renderTarget.depthBuffer && ! renderTarget.stencilBuffer ) {
+		if ( renderTarget.isWebGLMultiviewRenderTarget === true ) {
+
+			const useMultisample = useMultisampledRTT( renderTarget );
+			const numViews = renderTarget.numViews;
+
+			const depthTexture = renderTarget.depthTexture;
+			let glInternalFormat = 33190;
+			let glDepthAttachment = 36096;
+
+			if ( depthTexture && depthTexture.isDepthTexture ) {
+
+				if ( depthTexture.type === FloatType ) {
+
+					glInternalFormat = 36012;
+
+				} else if ( depthTexture.type === UnsignedInt248Type ) {
+
+					glInternalFormat = 35056;
+					glDepthAttachment = 33306;
+
+				}
+
+				// we're defaulting to 33190 so don't assign here
+				// or else DeepScan will complain
+
+				// else if ( depthTexture.type === UnsignedIntType ) {
+
+				// 	glInternalFormat = 33190;
+
+				// }
+
+			}
+
+			let depthStencilTexture = properties.get( renderTarget.depthTexture ).__webglTexture;
+			if ( depthStencilTexture === undefined ) {
+
+				depthStencilTexture = _gl.createTexture();
+				_gl.bindTexture( 35866, depthStencilTexture );
+				_gl.texStorage3D( 35866, 1, glInternalFormat, renderTarget.width, renderTarget.height, numViews );
+
+			}
+
+			if ( useMultisample ) {
+
+				multiviewExt.framebufferTextureMultisampleMultiviewOVR( 36160, glDepthAttachment, depthStencilTexture, 0, getRenderTargetSamples( renderTarget ), 0, numViews );
+
+			} else {
+
+				multiviewExt.framebufferTextureMultiviewOVR( 36160, glDepthAttachment, depthStencilTexture, 0, 0, numViews );
+
+			}
+
+		} else if ( renderTarget.depthBuffer && ! renderTarget.stencilBuffer ) {
 
 			let glInternalFormat = 33189;
 
@@ -24025,38 +24192,85 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 		}
 
-		setTexture2D( renderTarget.depthTexture, 0 );
+		if ( renderTarget.depthTexture.image.depth != 1 ) {
+
+			this.setTexture2DArray( renderTarget.depthTexture, 0 );
+
+		} else {
+
+			this.setTexture2D( renderTarget.depthTexture, 0 );
+
+		}
 
 		const webglDepthTexture = properties.get( renderTarget.depthTexture ).__webglTexture;
 		const samples = getRenderTargetSamples( renderTarget );
 
-		if ( renderTarget.depthTexture.format === DepthFormat ) {
+		if ( renderTarget.isWebGLMultiviewRenderTarget === true ) {
 
-			if ( useMultisampledRTT( renderTarget ) ) {
+			const useMultisample = useMultisampledRTT( renderTarget );
+			const numViews = renderTarget.numViews;
 
-				multisampledRTTExt.framebufferTexture2DMultisampleEXT( 36160, 36096, 3553, webglDepthTexture, 0, samples );
+			if ( renderTarget.depthTexture.format === DepthFormat ) {
+
+				if ( useMultisample ) {
+
+					multiviewExt.framebufferTextureMultisampleMultiviewOVR( 36160, 36096, webglDepthTexture, 0, samples, 0, numViews );
+
+				} else {
+
+					multiviewExt.framebufferTextureMultiviewOVR( 36160, 36096, webglDepthTexture, 0, 0, numViews );
+
+				}
+
+			} else if ( renderTarget.depthTexture.format === DepthStencilFormat ) {
+
+				if ( useMultisample ) {
+
+					multiviewExt.framebufferTextureMultisampleMultiviewOVR( 36160, 33306, webglDepthTexture, 0, samples, 0, numViews );
+
+				} else {
+
+					multiviewExt.framebufferTextureMultiviewOVR( 36160, 33306, webglDepthTexture, 0, 0, numViews );
+
+				}
 
 			} else {
 
-				_gl.framebufferTexture2D( 36160, 36096, 3553, webglDepthTexture, 0 );
-
-			}
-
-		} else if ( renderTarget.depthTexture.format === DepthStencilFormat ) {
-
-			if ( useMultisampledRTT( renderTarget ) ) {
-
-				multisampledRTTExt.framebufferTexture2DMultisampleEXT( 36160, 33306, 3553, webglDepthTexture, 0, samples );
-
-			} else {
-
-				_gl.framebufferTexture2D( 36160, 33306, 3553, webglDepthTexture, 0 );
+				throw new Error( 'Unknown depthTexture format' );
 
 			}
 
 		} else {
 
-			throw new Error( 'Unknown depthTexture format' );
+			if ( renderTarget.depthTexture.format === DepthFormat ) {
+
+				if ( useMultisampledRTT( renderTarget ) ) {
+
+					multisampledRTTExt.framebufferTexture2DMultisampleEXT( 36160, 36096, 3553, webglDepthTexture, 0, samples );
+
+				} else {
+
+					_gl.framebufferTexture2D( 36160, 36096, 3553, webglDepthTexture, 0 );
+
+				}
+
+			} else if ( renderTarget.depthTexture.format === DepthStencilFormat ) {
+
+				if ( useMultisampledRTT( renderTarget ) ) {
+
+					multisampledRTTExt.framebufferTexture2DMultisampleEXT( 36160, 33306, 3553, webglDepthTexture, 0, samples );
+
+				} else {
+
+					_gl.framebufferTexture2D( 36160, 33306, 3553, webglDepthTexture, 0 );
+
+				}
+
+			} else {
+
+				throw new Error( 'Unknown depthTexture format' );
+
+			}
 
 		}
 
@@ -24072,7 +24286,7 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 			if ( isCube ) throw new Error( 'target.depthTexture not supported in Cube render targets' );
 
-			setupDepthTexture( renderTargetProperties.__webglFramebuffer, renderTarget );
+			this.setupDepthTexture( renderTargetProperties.__webglFramebuffer, renderTarget );
 
 		} else {
 
@@ -24109,13 +24323,13 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 		if ( colorTexture !== undefined ) {
 
-			setupFrameBufferTexture( renderTargetProperties.__webglFramebuffer, renderTarget, renderTarget.texture, 36064, 3553 );
+			this.setupFrameBufferTexture( renderTargetProperties.__webglFramebuffer, renderTarget, renderTarget.texture, 36064, 3553 );
 
 		}
 
 		if ( depthTexture !== undefined ) {
 
-			setupDepthRenderbuffer( renderTarget );
+			this.setupDepthRenderbuffer( renderTarget );
 
 		}
 
@@ -24295,6 +24509,12 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 			}
 
+			if ( renderTarget.isWebGLMultiviewRenderTarget === true ) {
+
+				glTextureType = 35866;
+
+			}
+
 			state.bindTexture( glTextureType, textureProperties.__webglTexture );
 			setTextureParameters( glTextureType, texture, supportsMips );
 			setupFrameBufferTexture( renderTargetProperties.__webglFramebuffer, renderTarget, texture, 36064, glTextureType );
@@ -24311,9 +24531,9 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 		// Setup depth and stencil buffers
 
-		if ( renderTarget.depthBuffer ) {
+		if ( renderTarget.depthBuffer || renderTarget.isWebGLMultiviewRenderTarget === true ) {
 
-			setupDepthRenderbuffer( renderTarget );
+			this.setupDepthRenderbuffer( renderTarget );
 
 		}
 
@@ -24447,6 +24667,7 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 
 			state.bindFramebuffer( 36009, renderTargetProperties.__webglMultisampledFramebuffer );
 
+
 		}
 
 	}
@@ -24549,12 +24770,15 @@ function WebGLTextures( _gl, extensions, state, properties, capabilities, utils,
 	this.setTexture3D = setTexture3D;
 	this.setTextureCube = setTextureCube;
 	this.rebindTextures = rebindTextures;
+	this.uploadTexture = uploadTexture;
 	this.setupRenderTarget = setupRenderTarget;
 	this.updateRenderTargetMipmap = updateRenderTargetMipmap;
 	this.updateMultisampleRenderTarget = updateMultisampleRenderTarget;
+	this.setupDepthTexture = setupDepthTexture;
 	this.setupDepthRenderbuffer = setupDepthRenderbuffer;
 	this.setupFrameBufferTexture = setupFrameBufferTexture;
 	this.useMultisampledRTT = useMultisampledRTT;
+	this.runDeferredUploads = runDeferredUploads;
 
 }
 
@@ -24832,6 +25056,104 @@ function WebGLUtils( gl, extensions, capabilities ) {
 
 }
 
+/**
+ * @author fernandojsg / http://fernandojsg.com
+ * @author Takahiro https://github.com/takahirox
+ */
+
+
+class WebGLMultiview {
+
+	constructor( renderer, extensions, gl ) {
+
+		this.renderer = renderer;
+
+		this.DEFAULT_NUMVIEWS = 2;
+		this.maxNumViews = 0;
+		this.gl = gl;
+
+		this.extensions = extensions;
+
+		this.available = this.extensions.has( 'OCULUS_multiview' );
+
+		if ( this.available ) {
+
+			const extension = this.extensions.get( 'OCULUS_multiview' );
+
+			this.maxNumViews = this.gl.getParameter( extension.MAX_VIEWS_OVR );
+
+			this.mat4 = [];
+			this.mat3 = [];
+			this.cameraArray = [];
+
+			for ( var i = 0; i < this.maxNumViews; i ++ ) {
+
+				this.mat4[ i ] = new Matrix4();
+				this.mat3[ i ] = new Matrix3();
+
+			}
+
+		}
+
+	}
+
+	//
+	getCameraArray( camera ) {
+
+		if ( camera.isArrayCamera ) return camera.cameras;
+
+		this.cameraArray[ 0 ] = camera;
+
+		return this.cameraArray;
+
+	}
+
+	updateCameraProjectionMatricesUniform( camera, uniforms ) {
+
+		var cameras = this.getCameraArray( camera );
+
+		for ( var i = 0; i < cameras.length; i ++ ) {
+
+			this.mat4[ i ].copy( cameras[ i ].projectionMatrix );
+
+		}
+
+		uniforms.setValue( this.gl, 'projectionMatrices', this.mat4 );
+
+	}
+
+	updateCameraViewMatricesUniform( camera, uniforms ) {
+
+		var cameras = this.getCameraArray( camera );
+
+		for ( var i = 0; i < cameras.length; i ++ ) {
+
+			this.mat4[ i ].copy( cameras[ i ].matrixWorldInverse );
+
+		}
+
+		uniforms.setValue( this.gl, 'viewMatrices', this.mat4 );
+
+	}
+
+	updateObjectMatricesUniforms( object, camera, uniforms ) {
+
+		var cameras = this.getCameraArray( camera );
+
+		for ( var i = 0; i < cameras.length; i ++ ) {
+
+			this.mat4[ i ].multiplyMatrices( cameras[ i ].matrixWorldInverse, object.matrixWorld );
+			this.mat3[ i ].getNormalMatrix( this.mat4[ i ] );
+
+		}
+
+		uniforms.setValue( this.gl, 'modelViewMatrices', this.mat4 );
+		uniforms.setValue( this.gl, 'normalMatrices', this.mat3 );
+
+	}
+
+}
+
 class ArrayCamera extends PerspectiveCamera {
 
 	constructor( array = [] ) {
@@ -24845,6 +25167,38 @@ class ArrayCamera extends PerspectiveCamera {
 	}
 
 }
+
+/**
+ * @author fernandojsg / http://fernandojsg.com
+ * @author Takahiro https://github.com/takahirox
+ */
+
+class WebGLMultiviewRenderTarget extends WebGLRenderTarget {
+
+	constructor( width, height, numViews, options = {} ) {
+
+		super( width, height, options );
+
+		this.depthBuffer = false;
+		this.stencilBuffer = false;
+
+		this.numViews = numViews;
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.numViews = source.numViews;
+
+		return this;
+
+	}
+
+}
+
+WebGLMultiviewRenderTarget.prototype.isWebGLMultiviewRenderTarget = true;
 
 class Group extends Object3D {
 
@@ -25229,7 +25583,7 @@ class DepthTexture extends Texture {
 
 class WebXRManager extends EventDispatcher {
 
-	constructor( renderer, gl ) {
+	constructor( renderer, gl, extensions, useMultiview ) {
 
 		super();
 
@@ -25284,6 +25638,7 @@ class WebXRManager extends EventDispatcher {
 		this.enabled = false;
 
 		this.isPresenting = false;
+		this.isMultiview = false;
 
 		this.getController = function ( index ) {
 
@@ -25520,11 +25875,19 @@ class WebXRManager extends EventDispatcher {
 
 					}
 
+					scope.isMultiview = useMultiview && extensions.has( 'OCULUS_multiview' );
+
 					const projectionlayerInit = {
 						colorFormat: 32856,
 						depthFormat: glDepthFormat,
 						scaleFactor: framebufferScaleFactor
 					};
+
+					if ( scope.isMultiview ) {
+
+						projectionlayerInit.textureType = 'texture-array';
+
+					}
 
 					glBinding = new XRWebGLBinding( session, gl );
 
@@ -25532,17 +25895,31 @@ class WebXRManager extends EventDispatcher {
 
 					session.updateRenderState( { layers: [ glProjLayer ] } );
 
-					newRenderTarget = new WebGLRenderTarget(
-						glProjLayer.textureWidth,
-						glProjLayer.textureHeight,
-						{
-							format: RGBAFormat,
-							type: UnsignedByteType,
-							depthTexture: new DepthTexture( glProjLayer.textureWidth, glProjLayer.textureHeight, depthType, undefined, undefined, undefined, undefined, undefined, undefined, depthFormat ),
-							stencilBuffer: attributes.stencil,
-							encoding: renderer.outputEncoding,
-							samples: attributes.antialias ? 4 : 0
-						} );
+				 	const rtOptions = {
+						format: RGBAFormat,
+						type: UnsignedByteType,
+						depthTexture: new DepthTexture( glProjLayer.textureWidth, glProjLayer.textureHeight, depthType, undefined, undefined, undefined, undefined, undefined, undefined, depthFormat ),
+						stencilBuffer: attributes.stencil,
+						encoding: renderer.outputEncoding,
+						samples: attributes.antialias ? 4 : 0
+					};
+
+					if ( scope.isMultiview ) {
+
+						const extension = extensions.get( 'OCULUS_multiview' );
+
+						this.maxNumViews = gl.getParameter( extension.MAX_VIEWS_OVR );
+
+						newRenderTarget = new WebGLMultiviewRenderTarget( glProjLayer.textureWidth, glProjLayer.textureHeight, 2, rtOptions );
+
+					} else {
+
+						newRenderTarget = new WebGLRenderTarget(
+							glProjLayer.textureWidth,
+							glProjLayer.textureHeight,
+							rtOptions );
+
+					}
 
 					const renderTargetProperties = renderer.properties.get( newRenderTarget );
 					renderTargetProperties.__ignoreDepthValues = glProjLayer.ignoreDepthValues;
@@ -25862,7 +26239,6 @@ class WebXRManager extends EventDispatcher {
 
 						const glSubImage = glBinding.getViewSubImage( glProjLayer, view );
 						viewport = glSubImage.viewport;
-
 						// For side-by-side projection, we only produce a single texture for both eyes.
 						if ( i === 0 ) {
 
@@ -27110,7 +27486,8 @@ function WebGLRenderer( parameters = {} ) {
 		_premultipliedAlpha = parameters.premultipliedAlpha !== undefined ? parameters.premultipliedAlpha : true,
 		_preserveDrawingBuffer = parameters.preserveDrawingBuffer !== undefined ? parameters.preserveDrawingBuffer : false,
 		_powerPreference = parameters.powerPreference !== undefined ? parameters.powerPreference : 'default',
-		_failIfMajorPerformanceCaveat = parameters.failIfMajorPerformanceCaveat !== undefined ? parameters.failIfMajorPerformanceCaveat : false;
+		_failIfMajorPerformanceCaveat = parameters.failIfMajorPerformanceCaveat !== undefined ? parameters.failIfMajorPerformanceCaveat : false,
+		_multiviewStereo = parameters.multiviewStereo !== undefined ? parameters.multiviewStereo : false;
 
 	let _alpha;
 
@@ -27324,6 +27701,7 @@ function WebGLRenderer( parameters = {} ) {
 	let extensions, capabilities, state, info;
 	let properties, textures, cubemaps, cubeuvmaps, attributes, geometries, objects;
 	let programCache, materials, renderLists, renderStates, clipping, shadowMap;
+	let multiview;
 
 	let background, morphtargets, bufferRenderer, indexedBufferRenderer;
 
@@ -27357,6 +27735,7 @@ function WebGLRenderer( parameters = {} ) {
 		renderLists = new WebGLRenderLists();
 		renderStates = new WebGLRenderStates( extensions, capabilities );
 		background = new WebGLBackground( _this, cubemaps, cubeuvmaps, state, objects, _alpha, _premultipliedAlpha );
+		multiview = new WebGLMultiview( _this, extensions, _gl );
 		shadowMap = new WebGLShadowMap( _this, objects, capabilities );
 		uniformsGroups = new WebGLUniformsGroups( _gl, info, capabilities, state );
 
@@ -27379,7 +27758,7 @@ function WebGLRenderer( parameters = {} ) {
 
 	// xr
 
-	const xr = new WebXRManager( _this, _gl );
+	const xr = new WebXRManager( _this, _gl, extensions, _multiviewStereo );
 
 	this.xr = xr;
 
@@ -28064,13 +28443,24 @@ function WebGLRenderer( parameters = {} ) {
 
 		if ( camera.isArrayCamera ) {
 
-			const cameras = camera.cameras;
 
-			for ( let i = 0, l = cameras.length; i < l; i ++ ) {
+			if ( xr.enabled && xr.isMultiview ) {
 
-				const camera2 = cameras[ i ];
+				textures.deferTextureUploads = true;
 
-				renderScene( currentRenderList, scene, camera2, camera2.viewport );
+				renderScene( currentRenderList, scene, camera, camera.cameras[ 0 ].viewport );
+
+			} else {
+
+				const cameras = camera.cameras;
+
+				for ( let i = 0, l = cameras.length; i < l; i ++ ) {
+
+					const camera2 = cameras[ i ];
+
+					renderScene( currentRenderList, scene, camera2, camera2.viewport );
+
+				}
 
 			}
 
@@ -28098,6 +28488,7 @@ function WebGLRenderer( parameters = {} ) {
 
 		if ( scene.isScene === true ) scene.onAfterRender( _this, scene, camera );
 
+		textures.runDeferredUploads();
 		// _gl.finish();
 
 		bindingStates.resetDefaultState();
@@ -28494,6 +28885,7 @@ function WebGLRenderer( parameters = {} ) {
 		materialProperties.vertexAlphas = parameters.vertexAlphas;
 		materialProperties.vertexTangents = parameters.vertexTangents;
 		materialProperties.toneMapping = parameters.toneMapping;
+		materialProperties.numMultiviewViews = parameters.numMultiviewViews;
 
 	}
 
@@ -28513,6 +28905,8 @@ function WebGLRenderer( parameters = {} ) {
 		const morphNormals = !! geometry.morphAttributes.normal;
 		const morphColors = !! geometry.morphAttributes.color;
 		const toneMapping = material.toneMapped ? _this.toneMapping : NoToneMapping;
+
+		const numMultiviewViews = _currentRenderTarget && _currentRenderTarget.isWebGLMultiviewRenderTarget ? _currentRenderTarget.numViews : 0;
 
 		const morphAttribute = geometry.morphAttributes.position || geometry.morphAttributes.normal || geometry.morphAttributes.color;
 		const morphTargetsCount = ( morphAttribute !== undefined ) ? morphAttribute.length : 0;
@@ -28609,6 +29003,10 @@ function WebGLRenderer( parameters = {} ) {
 
 				needsProgramChange = true;
 
+			} else if ( materialProperties.numMultiviewViews !== numMultiviewViews ) {
+
+				needsProgramChange = true;
+
 			}
 
 		} else {
@@ -28653,7 +29051,15 @@ function WebGLRenderer( parameters = {} ) {
 
 		if ( refreshProgram || _currentCamera !== camera ) {
 
-			p_uniforms.setValue( _gl, 'projectionMatrix', camera.projectionMatrix );
+			if ( program.numMultiviewViews > 0 ) {
+
+				multiview.updateCameraProjectionMatricesUniform( camera, p_uniforms );
+
+			} else {
+
+				p_uniforms.setValue( _gl, 'projectionMatrix', camera.projectionMatrix );
+
+			}
 
 			if ( capabilities.logarithmicDepthBuffer ) {
 
@@ -28715,7 +29121,15 @@ function WebGLRenderer( parameters = {} ) {
 				material.isShadowMaterial ||
 				object.isSkinnedMesh ) {
 
-				p_uniforms.setValue( _gl, 'viewMatrix', camera.matrixWorldInverse );
+				if ( program.numMultiviewViews > 0 ) {
+
+					multiview.updateCameraViewMatricesUniform( camera, p_uniforms );
+
+				} else {
+
+					p_uniforms.setValue( _gl, 'viewMatrix', camera.matrixWorldInverse );
+
+				}
 
 			}
 
@@ -28824,8 +29238,17 @@ function WebGLRenderer( parameters = {} ) {
 
 		// common matrices
 
-		p_uniforms.setValue( _gl, 'modelViewMatrix', object.modelViewMatrix );
-		p_uniforms.setValue( _gl, 'normalMatrix', object.normalMatrix );
+		if ( program.numMultiviewViews > 0 ) {
+
+			multiview.updateObjectMatricesUniforms( object, camera, p_uniforms );
+
+		} else {
+
+			p_uniforms.setValue( _gl, 'modelViewMatrix', object.modelViewMatrix );
+			p_uniforms.setValue( _gl, 'normalMatrix', object.normalMatrix );
+
+		}
+
 		p_uniforms.setValue( _gl, 'modelMatrix', object.matrixWorld );
 
 		// UBOs
@@ -28909,20 +29332,16 @@ function WebGLRenderer( parameters = {} ) {
 		const renderTargetProperties = properties.get( renderTarget );
 		renderTargetProperties.__hasExternalTextures = true;
 
-		if ( renderTargetProperties.__hasExternalTextures ) {
+		renderTargetProperties.__autoAllocateDepthBuffer = depthTexture === undefined;
 
-			renderTargetProperties.__autoAllocateDepthBuffer = depthTexture === undefined;
+		if ( ! renderTargetProperties.__autoAllocateDepthBuffer && ! _currentRenderTarget.isWebGLMultiviewRenderTarget ) {
 
-			if ( ! renderTargetProperties.__autoAllocateDepthBuffer ) {
+			// The multisample_render_to_texture extension doesn't work properly if there
+			// are midframe flushes and an external depth buffer. Disable use of the extension.
+			if ( extensions.has( 'WEBGL_multisampled_render_to_texture' ) === true ) {
 
-				// The multisample_render_to_texture extension doesn't work properly if there
-				// are midframe flushes and an external depth buffer. Disable use of the extension.
-				if ( extensions.has( 'WEBGL_multisampled_render_to_texture' ) === true ) {
-
-					console.warn( 'THREE.WebGLRenderer: Render-to-texture extension was disabled because an external texture was provided' );
-					renderTargetProperties.__useRenderToTexture = false;
-
-				}
+				console.warn( 'THREE.WebGLRenderer: Render-to-texture extension was disabled because an external texture was provided' );
+				renderTargetProperties.__useRenderToTexture = false;
 
 			}
 
@@ -33652,6 +34071,16 @@ class LatheGeometry extends BufferGeometry {
 
 	}
 
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
+
+	}
+
 	static fromJSON( data ) {
 
 		return new LatheGeometry( data.points, data.segments, data.phiStart, data.phiLength );
@@ -33762,6 +34191,16 @@ class CircleGeometry extends BufferGeometry {
 		this.setAttribute( 'position', new Float32BufferAttribute( vertices, 3 ) );
 		this.setAttribute( 'normal', new Float32BufferAttribute( normals, 3 ) );
 		this.setAttribute( 'uv', new Float32BufferAttribute( uvs, 2 ) );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
 
 	}
 
@@ -34031,6 +34470,16 @@ class CylinderGeometry extends BufferGeometry {
 			groupStart += groupCount;
 
 		}
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
 
 	}
 
@@ -34365,6 +34814,16 @@ class PolyhedronGeometry extends BufferGeometry {
 
 	}
 
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
+
+	}
+
 	static fromJSON( data ) {
 
 		return new PolyhedronGeometry( data.vertices, data.indices, data.radius, data.details );
@@ -34565,6 +35024,16 @@ class EdgesGeometry extends BufferGeometry {
 			this.setAttribute( 'position', new Float32BufferAttribute( vertices, 3 ) );
 
 		}
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
 
 	}
 
@@ -36215,6 +36684,16 @@ class ExtrudeGeometry extends BufferGeometry {
 
 	}
 
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
+
+	}
+
 	toJSON() {
 
 		const data = super.toJSON();
@@ -36513,6 +36992,16 @@ class RingGeometry extends BufferGeometry {
 
 	}
 
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
+
+	}
+
 	static fromJSON( data ) {
 
 		return new RingGeometry( data.innerRadius, data.outerRadius, data.thetaSegments, data.phiSegments, data.thetaStart, data.thetaLength );
@@ -36644,6 +37133,16 @@ class ShapeGeometry extends BufferGeometry {
 			}
 
 		}
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
 
 	}
 
@@ -36813,6 +37312,16 @@ class SphereGeometry extends BufferGeometry {
 
 	}
 
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
+
+	}
+
 	static fromJSON( data ) {
 
 		return new SphereGeometry( data.radius, data.widthSegments, data.heightSegments, data.phiStart, data.phiLength, data.thetaStart, data.thetaLength );
@@ -36946,6 +37455,16 @@ class TorusGeometry extends BufferGeometry {
 		this.setAttribute( 'position', new Float32BufferAttribute( vertices, 3 ) );
 		this.setAttribute( 'normal', new Float32BufferAttribute( normals, 3 ) );
 		this.setAttribute( 'uv', new Float32BufferAttribute( uvs, 2 ) );
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
 
 	}
 
@@ -37098,6 +37617,16 @@ class TorusKnotGeometry extends BufferGeometry {
 			position.z = radius * Math.sin( quOverP ) * 0.5;
 
 		}
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
 
 	}
 
@@ -37268,6 +37797,16 @@ class TubeGeometry extends BufferGeometry {
 
 	}
 
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
+
+	}
+
 	toJSON() {
 
 		const data = super.toJSON();
@@ -37401,6 +37940,16 @@ class WireframeGeometry extends BufferGeometry {
 			this.setAttribute( 'position', new Float32BufferAttribute( vertices, 3 ) );
 
 		}
+
+	}
+
+	copy( source ) {
+
+		super.copy( source );
+
+		this.parameters = Object.assign( {}, source.parameters );
+
+		return this;
 
 	}
 
