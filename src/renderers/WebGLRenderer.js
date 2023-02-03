@@ -1308,8 +1308,10 @@ function WebGLRenderer( parameters = {} ) {
 
 		object.onBeforeRender( _this, scene, camera, geometry, material, group );
 
-		if (_this.xr && _this.xr.spaceWarpOnBeforeRender) {
+		if ( _this.xr && _this.xr.spaceWarpOnBeforeRender ) {
+
 			material = _this.xr.spaceWarpOnBeforeRender( object, material );
+
 		}
 
 		object.modelViewMatrix.multiplyMatrices( camera.matrixWorldInverse, object.matrixWorld );
@@ -1335,8 +1337,10 @@ function WebGLRenderer( parameters = {} ) {
 
 		}
 
-		if (_this.xr && _this.xr.spaceWarpOnAfterRender) {
+		if ( _this.xr && _this.xr.spaceWarpOnAfterRender ) {
+
 			_this.xr.spaceWarpOnAfterRender( object );
+
 		}
 
 		object.onAfterRender( _this, scene, camera, geometry, material, group );
