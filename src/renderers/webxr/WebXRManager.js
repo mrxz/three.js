@@ -261,8 +261,6 @@ class WebXRManager extends EventDispatcher {
 
 			if ( session !== null ) {
 
-				session.updateTargetFrameRate( 120 );
-
 				initialRenderTarget = renderer.getRenderTarget();
 
 				session.addEventListener( 'select', onSessionEvent );
