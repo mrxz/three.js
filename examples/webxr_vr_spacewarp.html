@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js vr - space warp</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+		<link type="text/css" rel="stylesheet" href="main.css">
+	</head>
+	<body>
+
+		<div id="info">
+			<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> vr - space warp
+		</div>
+
+		<!-- Import maps polyfill -->
+		<!-- Remove this when import maps will be widely supported -->
+		<script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+
+		<script type="importmap">
+			{
+				"imports": {
+					"three": "../build/three.module.js",
+					"three/addons/": "./jsm/"
+				}
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three';
+			import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+			import { HTMLMesh } from 'three/addons/interactive/HTMLMesh.js';
+			import Stats from 'three/addons/libs/stats.module.js';
+
+			let camera, scene, renderer;
+			let stats, statsMesh;
+
+			const dummy = new THREE.Object3D();
+			let cubes;
+
+			let spaceWarpEnabled = true;
+			let deltaPoseEnabled = true;
+
+			const cubeCount = 10;
+
+			init();
+			animate();
+
+			function init() {
+
+				scene = new THREE.Scene();
+				scene.background = new THREE.Color( 0x505050 );
+
+				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 10 );
+				camera.position.set( 0, 0, 0 );
+
+				renderer = new THREE.WebGLRenderer( { antialias: true, multiviewStereo: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				renderer.outputEncoding = THREE.sRGBEncoding;
+
+				renderer.xr.enabled = true;
+				renderer.xr.addEventListener( 'sessionstart', () => {
+
+					renderer.xr.getSession().addEventListener('select', onSelect);
+					renderer.xr.getSession().addEventListener('squeeze', onSqueeze);
+
+				} );
+
+				document.body.appendChild( renderer.domElement );
+				document.body.appendChild( VRButton.createButton( renderer ) );
+
+				// Cube Sea
+
+				const texture = new THREE.TextureLoader().load( 'textures/cube-sea.png' );
+				const geometry = new THREE.BoxGeometry( 1, 1, 1 );
+				const material = new THREE.MeshBasicMaterial( { map: texture } );
+
+				dummy.scale.setScalar( 0.5 );
+				cubes = new THREE.InstancedMesh( geometry, material, cubeCount * cubeCount * cubeCount - 1 );
+				let i = 0;
+				const halfGrid = cubeCount * 0.5;
+				for ( let x = 0; x < cubeCount; ++x ) {
+
+					for ( let y = 0; y < cubeCount; ++y ) {
+
+						for ( let z = 0; z < cubeCount; ++z ) {
+
+							dummy.position.set( x - halfGrid, y - halfGrid, z - halfGrid );
+
+							// Don't place a cube in the center of the grid.
+							if (dummy.position.x === 0 && dummy.position.y === 0 && dummy.position.z === 0) {
+								continue;
+							}
+
+							dummy.updateMatrix();
+
+							cubes.setMatrixAt( i ++, dummy.matrix );
+
+						}
+
+					}
+
+				}
+				cubes.instanceMatrix.needsUpdate = true;
+				scene.add( cubes );
+
+				// Add stats.js
+
+				stats = new Stats();
+				stats.dom.style.width = '80px';
+				stats.dom.style.height = '48px';
+				document.body.appendChild( stats.dom );
+
+				statsMesh = new HTMLMesh( stats.dom );
+				statsMesh.position.y = 1.5;
+				statsMesh.position.z = -0.6;
+				statsMesh.scale.setScalar( 2.5 );
+				scene.add( statsMesh );
+
+				//
+
+				window.addEventListener( 'resize', onWindowResize, false );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			//
+
+			function onSelect() {
+
+				if ( spaceWarpEnabled ) {
+
+					spaceWarpEnabled = false;
+					console.log( 'Turned off Space Warp' );
+
+				} else {
+
+					spaceWarpEnabled = true;
+					console.log( 'Turned on Space Warp' );
+
+				}
+
+			}
+
+			function onSqueeze() {
+
+				if ( deltaPoseEnabled ) {
+
+					deltaPoseEnabled = false;
+					console.log( 'Turned off delta pose' );
+
+				} else {
+
+					deltaPoseEnabled = true;
+					console.log( 'Turned on delta pose' );
+
+				}
+
+			}
+
+			//
+
+			function animate() {
+
+				renderer.setAnimationLoop( render, velocityRender, () => spaceWarpEnabled );
+
+			}
+
+			function render( time ) {
+
+				cubes.position.y = -1 * Math.abs(Math.sin(time / 2000) * 0.5);
+
+				renderer.render( scene, camera );
+				stats.update();
+
+				// Canvas elements doesn't trigger DOM updates, so we have to update the texture
+				statsMesh.material.map.update();
+
+			}
+
+			function velocityRender() {
+
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+	</body>
+</html>
