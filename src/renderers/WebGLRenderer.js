@@ -930,10 +930,10 @@ function WebGLRenderer( parameters = {} ) {
 
 	if ( typeof self !== 'undefined' ) animation.setContext( self );
 
-	this.setAnimationLoop = function ( callback, velocityCallback ) {
+	this.setAnimationLoop = function ( callback, velocityCallback, shouldRenderVelocityCallback ) {
 
 		onAnimationFrameCallback = callback;
-		xr.setAnimationLoop( callback, velocityCallback );
+		xr.setAnimationLoop( callback, velocityCallback, shouldRenderVelocityCallback );
 
 		( callback === null ) ? animation.stop() : animation.start();
 

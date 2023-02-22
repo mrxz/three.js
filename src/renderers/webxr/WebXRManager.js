@@ -639,6 +639,7 @@ class WebXRManager extends EventDispatcher {
 		// Animation Loop
 
 		let onAnimationFrameCallback = null;
+		let onShouldRenderVelocityCallback = null;
 		let onVelocityCallback = null;
 		let glSubImage = null;
 
@@ -747,36 +748,47 @@ class WebXRManager extends EventDispatcher {
 
 			if ( onVelocityCallback ) {
 
-				isRenderingSpaceWarp = true;
+				let shouldRenderMotionPass = true;
+				if ( onShouldRenderVelocityCallback ) {
 
-				if ( velocityRenderTarget === null ) {
-
-					const rtOptions = {
-						format: RGBAFormat,
-						type: HalfFloatType,
-						depthTexture: new DepthTexture( glSubImage.depthStencilTextureWidth, glSubImage.textureHeight, UnsignedInt248Type, undefined, undefined, undefined, undefined, undefined, undefined, DepthFormat ),
-						stencilBuffer: attributes.stencil,
-						encoding: renderer.outputEncoding,
-						samples: 0
-					};
-
-					velocityRenderTarget = new WebGLMultiviewRenderTarget( glSubImage.motionVectorTextureWidth, glSubImage.motionVectorTextureHeight, 2, rtOptions );
+					shouldRenderMotionPass = onShouldRenderVelocityCallback();
 
 				}
 
-				renderer.setRenderTargetTextures(
-					velocityRenderTarget,
-					glSubImage.motionVectorTexture,
-					glSubImage.depthStencilTexture );
+				if ( shouldRenderMotionPass ) {
 
-				renderer.setRenderTarget( velocityRenderTarget );
+					isRenderingSpaceWarp = true;
 
-				cameraVR.cameras[ 0 ].viewport.set( 0, 0, glSubImage.motionVectorTextureWidth, glSubImage.motionVectorTextureHeight );
-				cameraVR.cameras[ 1 ].viewport.set( 0, 0, glSubImage.motionVectorTextureWidth, glSubImage.motionVectorTextureHeight );
+					if ( velocityRenderTarget === null ) {
 
-				onVelocityCallback( time, frame );
+						const rtOptions = {
+							format: RGBAFormat,
+							type: HalfFloatType,
+							depthTexture: new DepthTexture( glSubImage.depthStencilTextureWidth, glSubImage.textureHeight, UnsignedInt248Type, undefined, undefined, undefined, undefined, undefined, undefined, DepthFormat ),
+							stencilBuffer: attributes.stencil,
+							encoding: renderer.outputEncoding,
+							samples: 0
+						};
 
-				isRenderingSpaceWarp = false;
+						velocityRenderTarget = new WebGLMultiviewRenderTarget( glSubImage.motionVectorTextureWidth, glSubImage.motionVectorTextureHeight, 2, rtOptions );
+
+					}
+
+					renderer.setRenderTargetTextures(
+						velocityRenderTarget,
+						glSubImage.motionVectorTexture,
+						glSubImage.depthStencilTexture );
+
+					renderer.setRenderTarget( velocityRenderTarget );
+
+					cameraVR.cameras[ 0 ].viewport.set( 0, 0, glSubImage.motionVectorTextureWidth, glSubImage.motionVectorTextureHeight );
+					cameraVR.cameras[ 1 ].viewport.set( 0, 0, glSubImage.motionVectorTextureWidth, glSubImage.motionVectorTextureHeight );
+
+					onVelocityCallback( time, frame );
+
+					isRenderingSpaceWarp = false;
+
+				}
 
 			}
 
@@ -898,9 +910,10 @@ class WebXRManager extends EventDispatcher {
 
 		animation.setAnimationLoop( onAnimationFrame );
 
-		this.setAnimationLoop = function ( callback, velocityCallback ) {
+		this.setAnimationLoop = function ( callback, velocityCallback, shouldRenderVelocityCallback ) {
 
 			onAnimationFrameCallback = callback;
+			onShouldRenderVelocityCallback = shouldRenderVelocityCallback;
 			onVelocityCallback = velocityCallback;
 
 		};
