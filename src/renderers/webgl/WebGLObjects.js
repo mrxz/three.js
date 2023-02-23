@@ -63,6 +63,8 @@ function WebGLObjects( gl, geometries, attributes, info ) {
 
 		if ( instancedMesh.instanceColor !== null ) attributes.remove( instancedMesh.instanceColor );
 
+		if ( instancedMesh.previousInstanceMatrix !== null ) attributes.remove( instancedMesh.previousInstanceMatrix );
+
 	}
 
 	return {

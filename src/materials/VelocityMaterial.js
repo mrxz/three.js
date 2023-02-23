@@ -13,7 +13,6 @@ class VelocityMaterial extends Material {
 
 		this.previousModelMatrix = new Matrix4();
 		this.previousViewMatrices = [ new Matrix4(), new Matrix4() ];
-		this.previousInstanceMatrix = null;
 
 		this.setValues( parameters );
 

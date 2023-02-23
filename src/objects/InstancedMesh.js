@@ -41,6 +41,17 @@ class InstancedMesh extends Mesh {
 		this.instanceMatrix.copy( source.instanceMatrix );
 
 		if ( source.instanceColor !== null ) this.instanceColor = source.instanceColor.clone();
+		if ( source.previousInstanceMatrix !== null ) {
+
+			if ( this.previousInstanceMatrix === null ) {
+
+				this.previousInstanceMatrix = new InstancedBufferAttribute( new Float32Array( source.count * 16 ), 16 );
+
+			}
+
+			this.previousInstanceMatrix.copy( source.previousInstanceMatrix );
+
+		}
 
 		this.count = source.count;
 
