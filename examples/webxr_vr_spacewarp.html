@@ -50,7 +50,6 @@
 			function init() {
 
 				scene = new THREE.Scene();
-				scene.background = new THREE.Color( 0x505050 );
 
 				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 10 );
 				camera.position.set( 0, 0, 0 );
@@ -177,6 +176,20 @@
 			}
 
 			function render( time ) {
+
+				// Use different colors to indicate whether space warp and delta pose are on
+				if (spaceWarpEnabled && deltaPoseEnabled) {
+					scene.background = new THREE.Color( "rgb(10%, 20%, 30%)" );
+				} else if (spaceWarpEnabled) {
+					// red color if space warp is on, but delta pose is not
+					scene.background = new THREE.Color( "rgb(30%, 10%, 10%)" );
+				} else if (deltaPoseEnabled) {
+					// green color is space warp is off, but delta pose is on
+					scene.background = new THREE.Color( "rgb(10%, 30%, 10%)" );
+				} else {
+					// orange brown color if neither is on
+					scene.background = new THREE.Color( "rgb(30%, 20%, 10%)" );
+				}
 
 				cubes.position.y = -1 * Math.abs(Math.sin(time / 2000) * 0.5);
 
