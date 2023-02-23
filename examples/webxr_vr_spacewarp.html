@@ -37,7 +37,7 @@
 			let stats, statsMesh;
 
 			const dummy = new THREE.Object3D();
-			let cubes;
+			let cubeGrid, spinningCubes;
 
 			let spaceWarpEnabled = true;
 			let deltaPoseEnabled = true;
@@ -66,6 +66,8 @@
 					renderer.xr.getSession().addEventListener('squeeze', onSqueeze);
 
 				} );
+				renderer.xr.setReferenceSpaceType( 'local' );
+				renderer.xr.setFoveation( 0 );
 
 				document.body.appendChild( renderer.domElement );
 				document.body.appendChild( VRButton.createButton( renderer ) );
@@ -76,8 +78,8 @@
 				const geometry = new THREE.BoxGeometry( 1, 1, 1 );
 				const material = new THREE.MeshBasicMaterial( { map: texture } );
 
-				dummy.scale.setScalar( 0.5 );
-				cubes = new THREE.InstancedMesh( geometry, material, cubeCount * cubeCount * cubeCount - 1 );
+				dummy.scale.setScalar( 0.4 );
+				cubeGrid = new THREE.InstancedMesh( geometry, material, cubeCount * cubeCount * cubeCount - 1 );
 				let i = 0;
 				const halfGrid = cubeCount * 0.5;
 				for ( let x = 0; x < cubeCount; ++x ) {
@@ -95,15 +97,32 @@
 
 							dummy.updateMatrix();
 
-							cubes.setMatrixAt( i ++, dummy.matrix );
+							cubeGrid.setMatrixAt( i ++, dummy.matrix );
 
 						}
 
 					}
 
 				}
-				cubes.instanceMatrix.needsUpdate = true;
-				scene.add( cubes );
+				cubeGrid.instanceMatrix.needsUpdate = true;
+				scene.add( cubeGrid );
+
+				dummy.scale.setScalar( 0.1 );
+				spinningCubes = new THREE.InstancedMesh( geometry, material, 4 );
+				dummy.position.set( 0, 0.25, -0.8 );
+				dummy.updateMatrix();
+				spinningCubes.setMatrixAt( 0, dummy.matrix );
+				dummy.position.set( 0.8, 0.25, 0 );
+				dummy.updateMatrix();
+				spinningCubes.setMatrixAt( 1, dummy.matrix );
+				dummy.position.set( 0, 0.25, 0.8 );
+				dummy.updateMatrix();
+				spinningCubes.setMatrixAt( 2, dummy.matrix );
+				dummy.position.set( -0.8, 0.25, 0 );
+				dummy.updateMatrix();
+				spinningCubes.setMatrixAt( 3, dummy.matrix );
+				spinningCubes.instanceMatrix.needsUpdate = true;
+				scene.add( spinningCubes );
 
 				// Add stats.js
 
@@ -191,7 +210,8 @@
 					scene.background = new THREE.Color( "rgb(30%, 20%, 10%)" );
 				}
 
-				cubes.position.y = -1 * Math.abs(Math.sin(time / 2000) * 0.5);
+				cubeGrid.position.y = -1 * Math.abs(Math.sin(time / 2000) * 0.5);
+				spinningCubes.rotation.y = time / 2000 / 3;
 
 				renderer.render( scene, camera );
 				stats.update();
