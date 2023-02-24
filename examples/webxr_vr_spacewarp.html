@@ -43,6 +43,7 @@
 			const dummy = new THREE.Object3D();
 			let cubeGrid, spinningCubes;
 
+			// SpaceWarp: Space Warp can be turned on or off on-demand
 			let spaceWarpEnabled = true;
 			let deltaPoseEnabled = true;
 
@@ -61,6 +62,7 @@
 				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 100 );
 				camera.position.set( 0, 0, 0 );
 
+				// SpaceWarp: multiview is required for Space Warp to work
 				renderer = new THREE.WebGLRenderer( { antialias: true, multiviewStereo: true } );
 				renderer.setPixelRatio( window.devicePixelRatio );
 				renderer.setSize( window.innerWidth, window.innerHeight );
@@ -313,13 +315,12 @@
 
 						if ( thumbstickX !== 0 || thumbstickY !== 0 ) {
 
-							//rotate( -thumbstickX );
 							move( thumbstickY, thumbstickX );
 							currentPoseInWorld = new XRRigidTransform( viewerTransform.position, viewerTransform.quaternion );
 
 						}
 
-		}
+					}
 
 					if ( ! previousPoseInWorld ) {
 
@@ -331,6 +332,7 @@
 
 						if ( previousPoseInWorld != currentPoseInWorld ) {
 
+							// SpaceWarp: If player can move around the world, then set deltaPose.
 							const inversePreviousPoseInWorld = inversePose( previousPoseInWorld );
 							renderer.xr.getBaseLayer().deltaPose = multiplyPose( inversePreviousPoseInWorld, currentPoseInWorld );
 
@@ -383,6 +385,7 @@
 
 			}
 
+			// SpaceWarp: Run the motion vector render pass
 			function velocityRender() {
 
 				renderer.render( scene, camera );
