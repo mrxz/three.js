@@ -48,43 +48,30 @@
 				CircleGeometry,
 				Color,
 				ConeGeometry,
-				Curve,
 				CylinderGeometry,
 				DodecahedronGeometry,
 				DoubleSide,
-				ExtrudeGeometry,
 				Float32BufferAttribute,
 				Group,
 				IcosahedronGeometry,
 				InstancedMesh,
-				LatheGeometry,
 				Line,
-				LineSegments,
 				LineBasicMaterial,
-				Matrix4,
 				Mesh,
 				MeshBasicMaterial,
 				MeshPhongMaterial,
 				Object3D,
 				OctahedronGeometry,
 				PerspectiveCamera,
-				PlaneGeometry,
 				PointLight,
 				RingGeometry,
 				Scene,
-				ShaderMaterial,
 				Shape,
-				ShapeGeometry,
 				SphereGeometry,
 				sRGBEncoding,
 				TetrahedronGeometry,
 				TorusGeometry,
 				TorusKnotGeometry,
-				TubeGeometry,
-				UniformsUtils,
-				Vector2,
-				Vector3,
-				WireframeGeometry,
 				WebGLRenderer
 			} from 'three';
 
@@ -95,31 +82,9 @@
 
 			//var spector = new SPECTOR.Spector();
 			//spector.displayUI();
-			//spector.spyCanvases();		
+			//spector.spyCanvases();
 
 			const twoPi = Math.PI * 2;
-
-			class CustomSinCurve extends Curve {
-
-				constructor( scale = 1 ) {
-
-					super();
-
-					this.scale = scale;
-
-				}
-
-				getPoint( t, optionalTarget = new Vector3() ) {
-
-					const tx = t * 3 - 1.5;
-					const ty = Math.sin( 2 * Math.PI * t );
-					const tz = 0;
-
-					return optionalTarget.set( tx, ty, tz ).multiplyScalar( this.scale );
-
-				}
-
-			}
 
 			function updateGroupGeometry( mesh, geometry ) {
 
@@ -141,9 +106,6 @@
 			const dimension = 15;
 
 			const heartShape = new Shape();
-			let mesh, lineMesh, materialVelocity, meshMaterial, lineMaterial;
-			let controller1, controller2;
-			let controllerGrip1, controllerGrip2;
 			const dummy = new Object3D();
 
 			heartShape.moveTo( x + 5, y + 5 );
@@ -388,7 +350,7 @@
 					generateGeometry();
 
 				},
-/*
+	/*
 				LatheGeometry: function ( mesh ) {
 
 					const points = [];
@@ -450,7 +412,7 @@
 					generateGeometry();
 
 				},
-/*
+	/*
 				PlaneGeometry: function ( mesh ) {
 
 					const data = {
@@ -802,25 +764,26 @@
 			scene.add( lights[ 2 ] );
 
 			const group = new Group();
-			group.position.set(0, 0, -3 );
+			group.position.set( 0, 0, - 3 );
 
 			const geometry = new BufferGeometry();
 			geometry.setAttribute( 'position', new Float32BufferAttribute( [], 3 ) );
 
-			lineMaterial = new LineBasicMaterial( { color: 0xffffff, transparent: true, opacity: 0.5 } );
-			meshMaterial = new MeshPhongMaterial( { color: 0x156289, emissive: 0x072534, side: DoubleSide, flatShading: true } );
+			const meshMaterial = new MeshPhongMaterial( { color: 0x156289, emissive: 0x072534, side: DoubleSide, flatShading: true } );
 
-			//lineMesh = new LineSegments( geometry, lineMaterial );
-			//group.add( lineMesh);
-			mesh = new InstancedMesh( geometry, meshMaterial, dimension*dimension);
-			group.add( mesh);
+			const mesh = new InstancedMesh( geometry, meshMaterial, dimension * dimension );
+			group.add( mesh );
 
-			for (let x = 0; x < dimension; x++) {
-				for (let y = 0; y < dimension; y++) {
-					dummy.position.set( (x-(dimension-1)/2) * 1.5, (y-(dimension-1)/2)*1.5, 0 );
+			for ( let x = 0; x < dimension; x ++ ) {
+
+				for ( let y = 0; y < dimension; y ++ ) {
+
+					dummy.position.set( ( x - ( dimension - 1 ) / 2 ) * 1.5, ( y - ( dimension - 1 ) / 2 ) * 1.5, 0 );
 					dummy.updateMatrix();
-					mesh.setMatrixAt( (x*dimension) + y, dummy.matrix );
+					mesh.setMatrixAt( ( x * dimension ) + y, dummy.matrix );
+
 				}
+
 			}
 
 			const options = chooseFromHash( group );
@@ -854,7 +817,7 @@
 			}
 
 
-			controller1 = renderer.xr.getController( 0 );
+			const controller1 = renderer.xr.getController( 0 );
 			controller1.addEventListener( 'connected', function ( event ) {
 
 				this.add( buildController( event.data ) );
@@ -867,7 +830,7 @@
 			} );
 			scene.add( controller1 );
 
-			controller2 = renderer.xr.getController( 1 );
+			const controller2 = renderer.xr.getController( 1 );
 			controller2.addEventListener( 'connected', function ( event ) {
 
 				this.add( buildController( event.data ) );
@@ -887,37 +850,46 @@
 
 			const controllerModelFactory = new XRControllerModelFactory();
 
-			controllerGrip1 = renderer.xr.getControllerGrip( 0 );
+			const controllerGrip1 = renderer.xr.getControllerGrip( 0 );
 			controllerGrip1.add( controllerModelFactory.createControllerModel( controllerGrip1 ) );
 			scene.add( controllerGrip1 );
 
-			controllerGrip2 = renderer.xr.getControllerGrip( 1 );
+			const controllerGrip2 = renderer.xr.getControllerGrip( 1 );
 			controllerGrip2.add( controllerModelFactory.createControllerModel( controllerGrip2 ) );
 			scene.add( controllerGrip2 );
 
 			//
 
-			function render(time) {
+			function render( ) {
 
 				if ( ! options.fixed ) {
 
 					group.rotation.y += speed;
 					speed += 0.0002;
-					if (speed > 0.05) {
-						if (select >= 17) {
-							select = -1;
+					if ( speed > 0.05 ) {
+
+						if ( select >= 17 ) {
+
+							select = - 1;
+
 						}
-						Object.entries(guis)[++select % Object.entries(guis).length][1]( group );						
-						speed = -0.05;
+
+						Object.entries( guis )[ ++ select % Object.entries( guis ).length ][ 1 ]( group );
+						speed = - 0.05;
+
 					}
 
-					for (let x = 0; x < dimension; x++) {
-						for (let y = 0; y < dimension; y++) {
-							dummy.position.set( (x-(dimension-1)/2) * 1.5, (y-(dimension-1)/2)*1.5, 0 );
-							dummy.rotation.x = group.rotation.y * (((x*dimension) + y)%2?-1:1);
+					for ( let x = 0; x < dimension; x ++ ) {
+
+						for ( let y = 0; y < dimension; y ++ ) {
+
+							dummy.position.set( ( x - ( dimension - 1 ) / 2 ) * 1.5, ( y - ( dimension - 1 ) / 2 ) * 1.5, 0 );
+							dummy.rotation.x = group.rotation.y * ( ( ( x * dimension ) + y ) % 2 ? - 1 : 1 );
 							dummy.updateMatrix();
-							mesh.setMatrixAt( (x*dimension) + y, dummy.matrix );
+							mesh.setMatrixAt( ( x * dimension ) + y, dummy.matrix );
+
 						}
+
 					}
 
 					mesh.instanceMatrix.needsUpdate = true;
