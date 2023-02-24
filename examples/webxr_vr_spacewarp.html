@@ -36,6 +36,10 @@
 			let camera, scene, renderer;
 			let stats, statsMesh;
 
+			let gamepad1, gamepad2;
+			let baseReferenceSpace;
+			let trackingSpaceHeadingDegrees = 0;  // around +Y axis, positive angles rotate left
+
 			const dummy = new THREE.Object3D();
 			let cubeGrid, spinningCubes;
 
@@ -43,6 +47,7 @@
 			let deltaPoseEnabled = true;
 
 			const cubeCount = 10;
+			const THUMBSTICK_X_AXIS = 2;
 
 			init();
 			animate();
@@ -64,6 +69,7 @@
 
 					renderer.xr.getSession().addEventListener('select', onSelect);
 					renderer.xr.getSession().addEventListener('squeeze', onSqueeze);
+					baseReferenceSpace = renderer.xr.getReferenceSpace();
 
 				} );
 				renderer.xr.setReferenceSpaceType( 'local' );
@@ -71,6 +77,17 @@
 
 				document.body.appendChild( renderer.domElement );
 				document.body.appendChild( VRButton.createButton( renderer ) );
+
+				// Controller
+
+				let controller = renderer.xr.getController( 0 );
+				controller.addEventListener( 'connected', function( event ) {
+					gamepad1 = event.data.gamepad;
+				} );
+				controller = renderer.xr.getController( 1 );
+				controller.addEventListener( 'connected', function( event ) {
+					gamepad2 = event.data.gamepad;
+				} );
 
 				// Cube Sea
 
@@ -189,6 +206,22 @@
 
 			//
 
+			function rotate( angle ) {
+
+				trackingSpaceHeadingDegrees += angle;
+
+				const offsetPosition = new THREE.Vector4();
+				const offsetRotation = new THREE.Quaternion();
+				const yAxis = new THREE.Vector3( 0, 1, 0 );
+				offsetRotation.setFromAxisAngle( yAxis, -trackingSpaceHeadingDegrees * Math.PI / 180 );
+				const transform = new XRRigidTransform( offsetPosition, offsetRotation );
+				const teleportSpaceOffset = baseReferenceSpace.getOffsetReferenceSpace( transform );
+				renderer.xr.setReferenceSpace( teleportSpaceOffset );
+
+			}
+
+			//
+
 			function animate() {
 
 				renderer.setAnimationLoop( render, velocityRender, () => spaceWarpEnabled );
@@ -196,6 +229,18 @@
 			}
 
 			function render( time ) {
+
+				if ( gamepad1 || gamepad2 ) {
+					let thumbstickX = 0;
+					if ( gamepad1 && gamepad1.axes[THUMBSTICK_X_AXIS] !== 0 ) {
+						thumbstickX = gamepad1.axes[THUMBSTICK_X_AXIS];
+					} else if ( gamepad2 && gamepad2.axes[THUMBSTICK_X_AXIS] !== 0) {
+						thumbstickX = gamepad2.axes[THUMBSTICK_X_AXIS];
+					}
+					if ( thumbstickX !== 0 ) {
+						rotate( -thumbstickX );
+					}
+				}
 
 				// Use different colors to indicate whether space warp and delta pose are on
 				if (spaceWarpEnabled && deltaPoseEnabled) {
