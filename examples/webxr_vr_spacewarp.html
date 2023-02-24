@@ -37,8 +37,8 @@
 			let stats, statsMesh;
 
 			let gamepad1, gamepad2;
-			let baseReferenceSpace;
-			let trackingSpaceHeadingDegrees = 0;  // around +Y axis, positive angles rotate left
+			let viewerTransform;
+			let previousPoseInWorld, currentPoseInWorld;
 
 			const dummy = new THREE.Object3D();
 			let cubeGrid, spinningCubes;
@@ -48,6 +48,8 @@
 
 			const cubeCount = 10;
 			const THUMBSTICK_X_AXIS = 2;
+			const THUMBSTICK_Y_AXIS = 3;
+			const Y_AXIS = new THREE.Vector3( 0, 1, 0 );
 
 			init();
 			animate();
@@ -56,7 +58,7 @@
 
 				scene = new THREE.Scene();
 
-				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 10 );
+				camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 100 );
 				camera.position.set( 0, 0, 0 );
 
 				renderer = new THREE.WebGLRenderer( { antialias: true, multiviewStereo: true } );
@@ -67,13 +69,16 @@
 				renderer.xr.enabled = true;
 				renderer.xr.addEventListener( 'sessionstart', () => {
 
-					renderer.xr.getSession().addEventListener('select', onSelect);
-					renderer.xr.getSession().addEventListener('squeeze', onSqueeze);
-					baseReferenceSpace = renderer.xr.getReferenceSpace();
+					renderer.xr.getSession().addEventListener( 'select', onSelect );
+					renderer.xr.getSession().addEventListener( 'squeeze', onSqueeze );
 
 				} );
 				renderer.xr.setReferenceSpaceType( 'local' );
 				renderer.xr.setFoveation( 0 );
+
+				viewerTransform = new THREE.Group();
+				viewerTransform.add( camera );
+				scene.add( viewerTransform );
 
 				document.body.appendChild( renderer.domElement );
 				document.body.appendChild( VRButton.createButton( renderer ) );
@@ -81,12 +86,16 @@
 				// Controller
 
 				let controller = renderer.xr.getController( 0 );
-				controller.addEventListener( 'connected', function( event ) {
+				controller.addEventListener( 'connected', function ( event ) {
+
 					gamepad1 = event.data.gamepad;
+
 				} );
 				controller = renderer.xr.getController( 1 );
-				controller.addEventListener( 'connected', function( event ) {
+				controller.addEventListener( 'connected', function ( event ) {
+
 					gamepad2 = event.data.gamepad;
+
 				} );
 
 				// Cube Sea
@@ -99,17 +108,19 @@
 				cubeGrid = new THREE.InstancedMesh( geometry, material, cubeCount * cubeCount * cubeCount - 1 );
 				let i = 0;
 				const halfGrid = cubeCount * 0.5;
-				for ( let x = 0; x < cubeCount; ++x ) {
+				for ( let x = 0; x < cubeCount; ++ x ) {
 
-					for ( let y = 0; y < cubeCount; ++y ) {
+					for ( let y = 0; y < cubeCount; ++ y ) {
 
-						for ( let z = 0; z < cubeCount; ++z ) {
+						for ( let z = 0; z < cubeCount; ++ z ) {
 
 							dummy.position.set( x - halfGrid, y - halfGrid, z - halfGrid );
 
 							// Don't place a cube in the center of the grid.
-							if (dummy.position.x === 0 && dummy.position.y === 0 && dummy.position.z === 0) {
+							if ( dummy.position.x === 0 && dummy.position.y === 0 && dummy.position.z === 0 ) {
+
 								continue;
+
 							}
 
 							dummy.updateMatrix();
@@ -121,12 +132,13 @@
 					}
 
 				}
+
 				cubeGrid.instanceMatrix.needsUpdate = true;
 				scene.add( cubeGrid );
 
 				dummy.scale.setScalar( 0.1 );
 				spinningCubes = new THREE.InstancedMesh( geometry, material, 4 );
-				dummy.position.set( 0, 0.25, -0.8 );
+				dummy.position.set( 0, 0.25, - 0.8 );
 				dummy.updateMatrix();
 				spinningCubes.setMatrixAt( 0, dummy.matrix );
 				dummy.position.set( 0.8, 0.25, 0 );
@@ -135,7 +147,7 @@
 				dummy.position.set( 0, 0.25, 0.8 );
 				dummy.updateMatrix();
 				spinningCubes.setMatrixAt( 2, dummy.matrix );
-				dummy.position.set( -0.8, 0.25, 0 );
+				dummy.position.set( - 0.8, 0.25, 0 );
 				dummy.updateMatrix();
 				spinningCubes.setMatrixAt( 3, dummy.matrix );
 				spinningCubes.instanceMatrix.needsUpdate = true;
@@ -150,8 +162,8 @@
 
 				statsMesh = new HTMLMesh( stats.dom );
 				statsMesh.position.x = 0;
-				statsMesh.position.y = -0.25;
-				statsMesh.position.z = -0.75;
+				statsMesh.position.y = - 0.25;
+				statsMesh.position.z = - 0.75;
 				statsMesh.scale.setScalar( 2.5 );
 				scene.add( statsMesh );
 
@@ -206,17 +218,60 @@
 
 			//
 
-			function rotate( angle ) {
+			function move( movement, angle ) {
 
-				trackingSpaceHeadingDegrees += angle;
+				if ( angle !== 0 ) {
 
-				const offsetPosition = new THREE.Vector4();
-				const offsetRotation = new THREE.Quaternion();
-				const yAxis = new THREE.Vector3( 0, 1, 0 );
-				offsetRotation.setFromAxisAngle( yAxis, -trackingSpaceHeadingDegrees * Math.PI / 180 );
-				const transform = new XRRigidTransform( offsetPosition, offsetRotation );
-				const teleportSpaceOffset = baseReferenceSpace.getOffsetReferenceSpace( transform );
-				renderer.xr.setReferenceSpace( teleportSpaceOffset );
+					viewerTransform.rotateOnAxis( Y_AXIS, - angle * Math.PI / 180 );
+
+				}
+
+				if ( movement !== 0 ) {
+
+					const matrixElements = renderer.xr.getCamera().matrixWorld.elements;
+					const movementDirection = new THREE.Vector3(
+						matrixElements[ 8 ],
+						0,
+						matrixElements[ 10 ],
+					).normalize();
+					viewerTransform.position.add( movementDirection.multiplyScalar( movement * 0.1 ) );
+
+				}
+
+			}
+
+			function quaternionRotation( q, v ) {
+
+				const p = new THREE.Quaternion( v.x, v.y, v.z, 0 );
+				const qInv = q.clone().conjugate();
+				const qpqInv = q.clone().multiply( p ).multiply( qInv );
+				return new THREE.Vector3( qpqInv.x, qpqInv.y, qpqInv.z );
+
+			}
+
+			function multiplyPose( a, b ) {
+
+				const aQuaternion = new THREE.Quaternion( a.orientation.x, a.orientation.y, a.orientation.z, a.orientation.w );
+				const orientation = new THREE.Quaternion( b.orientation.x, b.orientation.y, b.orientation.z, b.orientation.w );
+				orientation.multiply( aQuaternion );
+
+				const aOrientation = new THREE.Quaternion( a.orientation.x, a.orientation.y, a.orientation.z, a.orientation.w );
+				const position = quaternionRotation( aOrientation, b.position );
+				position.add( a.position );
+
+				return new XRRigidTransform( position, orientation );
+
+			}
+
+			function inversePose( pose ) {
+
+				const orientation = new THREE.Quaternion( pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w );
+				orientation.conjugate();
+
+				let position = new THREE.Vector3( pose.position.x, pose.position.y, pose.position.z );
+				position = quaternionRotation( orientation, position.multiplyScalar( - 1 ) );
+
+				return new XRRigidTransform( position, orientation );
 
 			}
 
@@ -230,33 +285,94 @@
 
 			function render( time ) {
 
-				if ( gamepad1 || gamepad2 ) {
-					let thumbstickX = 0;
-					if ( gamepad1 && gamepad1.axes[THUMBSTICK_X_AXIS] !== 0 ) {
-						thumbstickX = gamepad1.axes[THUMBSTICK_X_AXIS];
-					} else if ( gamepad2 && gamepad2.axes[THUMBSTICK_X_AXIS] !== 0) {
-						thumbstickX = gamepad2.axes[THUMBSTICK_X_AXIS];
+				if ( renderer.xr.isPresenting ) {
+
+					if ( gamepad1 || gamepad2 ) {
+
+						let thumbstickX = 0;
+						if ( gamepad1 && gamepad1.axes[ THUMBSTICK_X_AXIS ] !== 0 ) {
+
+							thumbstickX = gamepad1.axes[ THUMBSTICK_X_AXIS ];
+
+						} else if ( gamepad2 && gamepad2.axes[ THUMBSTICK_X_AXIS ] !== 0 && thumbstickX === 0 ) {
+
+							thumbstickX = gamepad2.axes[ THUMBSTICK_X_AXIS ];
+
+						}
+
+						let thumbstickY = 0;
+						if ( gamepad1 && gamepad1.axes[ THUMBSTICK_Y_AXIS ] !== 0 ) {
+
+							thumbstickY = gamepad1.axes[ THUMBSTICK_Y_AXIS ];
+
+						} else if ( gamepad2 && gamepad2.axes[ THUMBSTICK_Y_AXIS ] !== 0 && thumbstickY === 0 ) {
+
+							thumbstickY = gamepad2.axes[ THUMBSTICK_Y_AXIS ];
+
+						}
+
+						if ( thumbstickX !== 0 || thumbstickY !== 0 ) {
+
+							//rotate( -thumbstickX );
+							move( thumbstickY, thumbstickX );
+							currentPoseInWorld = new XRRigidTransform( viewerTransform.position, viewerTransform.quaternion );
+
+						}
+
+		}
+
+					if ( ! previousPoseInWorld ) {
+
+						previousPoseInWorld = currentPoseInWorld;
+
 					}
-					if ( thumbstickX !== 0 ) {
-						rotate( -thumbstickX );
+
+					if ( deltaPoseEnabled ) {
+
+						if ( previousPoseInWorld != currentPoseInWorld ) {
+
+							const inversePreviousPoseInWorld = inversePose( previousPoseInWorld );
+							renderer.xr.getBaseLayer().deltaPose = multiplyPose( inversePreviousPoseInWorld, currentPoseInWorld );
+
+						} else {
+
+							renderer.xr.getBaseLayer().deltaPose = null;
+
+						}
+
+					} else {
+
+						renderer.xr.getBaseLayer().deltaPose = null;
+
 					}
+
+					previousPoseInWorld = currentPoseInWorld;
+
 				}
 
 				// Use different colors to indicate whether space warp and delta pose are on
-				if (spaceWarpEnabled && deltaPoseEnabled) {
-					scene.background = new THREE.Color( "rgb(10%, 20%, 30%)" );
-				} else if (spaceWarpEnabled) {
+				if ( spaceWarpEnabled && deltaPoseEnabled ) {
+
+					scene.background = new THREE.Color( 'rgb(10%, 20%, 30%)' );
+
+				} else if ( spaceWarpEnabled ) {
+
 					// red color if space warp is on, but delta pose is not
-					scene.background = new THREE.Color( "rgb(30%, 10%, 10%)" );
-				} else if (deltaPoseEnabled) {
+					scene.background = new THREE.Color( 'rgb(30%, 10%, 10%)' );
+
+				} else if ( deltaPoseEnabled ) {
+
 					// green color is space warp is off, but delta pose is on
-					scene.background = new THREE.Color( "rgb(10%, 30%, 10%)" );
+					scene.background = new THREE.Color( 'rgb(10%, 30%, 10%)' );
+
 				} else {
+
 					// orange brown color if neither is on
-					scene.background = new THREE.Color( "rgb(30%, 20%, 10%)" );
+					scene.background = new THREE.Color( 'rgb(30%, 20%, 10%)' );
+
 				}
 
-				cubeGrid.position.y = -1 * Math.abs(Math.sin(time / 2000) * 0.5);
+				cubeGrid.position.y = - 1 * Math.abs( Math.sin( time / 2000 ) * 0.5 );
 				spinningCubes.rotation.y = time / 2000 / 3;
 
 				renderer.render( scene, camera );
