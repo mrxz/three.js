@@ -36,6 +36,7 @@
 
 			const urlParams = new URLSearchParams( location.search );
 			const showControllers = urlParams.get( 'controllers' ) === '1';
+			const cubeCount = urlParams.get( 'cubes' ) ? parseInt( urlParams.get( 'cubes' ) ) : 10;
 
 			let camera, scene, renderer;
 			let stats, statsMesh;
@@ -51,7 +52,6 @@
 			let spaceWarpEnabled = true;
 			let deltaPoseEnabled = true;
 
-			const cubeCount = 10;
 			const THUMBSTICK_X_AXIS = 2;
 			const THUMBSTICK_Y_AXIS = 3;
 			const Y_AXIS = new THREE.Vector3( 0, 1, 0 );
