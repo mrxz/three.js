@@ -380,7 +380,8 @@
 		"webxr_vr_rollercoaster",
 		"webxr_vr_sandbox",
 		"webxr_vr_sculpt",
-		"webxr_vr_spacewarp",
+		"webxr_vr_spacewarp_meshes",
+		"webxr_vr_spacewarp_cubes",
 		"webxr_vr_teleport",
 		"webxr_vr_video"
 	],
