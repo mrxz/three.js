@@ -902,7 +902,16 @@
 
 			function velocityRender() {
 
+				const sceneMatrixWorldAutoUpdate = scene.matrixWorldAutoUpdate;
+				scene.matrixWorldAutoUpdate = false;
+				const cameraMatrixWorldAutoUpdate = camera.matrixWorldAutoUpdate;
+				camera.matrixWorldAutoUpdate = false;
+				const xrCameraAutoUpdate = renderer.xr.cameraAutoUpdate;
+				renderer.xr.cameraAutoUpdate = false;
 				renderer.render( scene, camera );
+				scene.matrixWorldAutoUpdate = sceneMatrixWorldAutoUpdate;
+				camera.matrixWorldAutoUpdate = cameraMatrixWorldAutoUpdate;
+				renderer.xr.cameraAutoUpdate = xrCameraAutoUpdate;
 
 			}
 
