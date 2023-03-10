@@ -31,15 +31,11 @@
 			import { VRButton } from 'three/addons/webxr/VRButton.js';
 			import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 
-			import { HTMLMesh } from 'three/addons/interactive/HTMLMesh.js';
-			import Stats from 'three/addons/libs/stats.module.js';
-
 			const urlParams = new URLSearchParams( location.search );
 			const showControllers = urlParams.get( 'controllers' ) === '1';
 			const cubeCount = urlParams.get( 'cubes' ) ? parseInt( urlParams.get( 'cubes' ) ) : 10;
 
 			let camera, scene, renderer;
-			let stats, statsMesh;
 
 			let gamepad1, gamepad2;
 			let viewerTransform;
@@ -180,20 +176,6 @@
 				spinningCubes.setMatrixAt( 3, dummy.matrix );
 				spinningCubes.instanceMatrix.needsUpdate = true;
 				scene.add( spinningCubes );
-
-				// Add stats.js
-
-				stats = new Stats();
-				stats.dom.style.width = '80px';
-				stats.dom.style.height = '48px';
-				document.body.appendChild( stats.dom );
-
-				statsMesh = new HTMLMesh( stats.dom );
-				statsMesh.position.x = 0;
-				statsMesh.position.y = - 0.25;
-				statsMesh.position.z = - 0.75;
-				statsMesh.scale.setScalar( 2.5 );
-				scene.add( statsMesh );
 
 				//
 
@@ -404,10 +386,6 @@
 				spinningCubes.rotation.y = time / 2000 / 3;
 
 				renderer.render( scene, camera );
-				stats.update();
-
-				// Canvas elements doesn't trigger DOM updates, so we have to update the texture
-				statsMesh.material.map.update();
 
 			}
 
