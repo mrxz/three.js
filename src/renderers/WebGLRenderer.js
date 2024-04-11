@@ -203,6 +203,7 @@ class WebGLRenderer {
 		const _projScreenMatrix = new Matrix4();
 
 		const _vector3 = new Vector3();
+		const _vector4 = new Vector4();
 
 		const _emptyScene = { background: null, fog: null, environment: null, overrideMaterial: null, isScene: true };
 
@@ -1196,13 +1197,19 @@ class WebGLRenderer {
 
 				}
 
+				currentRenderState.state.viewport.copy( _currentViewport );
+
 				for ( let i = 0, l = cameras.length; i < l; i ++ ) {
 
 					const camera2 = cameras[ i ];
 
-					renderScene( currentRenderList, scene, camera2, camera2.viewport );
+					setRenderTargetViewport( camera2.viewport );
+
+					renderScene( currentRenderList, scene, camera2 );
 
 				}
+
+				setRenderTargetViewport( currentRenderState.state.viewport );
 
 			} else {
 
@@ -1261,6 +1268,21 @@ class WebGLRenderer {
 			}
 
 		};
+
+		function setRenderTargetViewport( viewport ) {
+
+			if ( _currentRenderTarget !== null ) {
+
+				_currentRenderTarget.viewport.copy( viewport );
+				state.viewport( _currentViewport.copy( viewport ) );
+
+			} else {
+
+				_this.setViewport( _vector4.copy( viewport ).divideScalar( _pixelRatio ) );
+
+			}
+
+		}
 
 		function projectObject( object, camera, groupOrder, sortObjects ) {
 
@@ -1376,7 +1398,7 @@ class WebGLRenderer {
 
 		}
 
-		function renderScene( currentRenderList, scene, camera, viewport ) {
+		function renderScene( currentRenderList, scene, camera ) {
 
 			const opaqueObjects = currentRenderList.opaque;
 			const transmissiveObjects = currentRenderList.transmissive;
@@ -1385,8 +1407,6 @@ class WebGLRenderer {
 			currentRenderState.setupLightsView( camera );
 
 			if ( _clippingEnabled === true ) clipping.setGlobalState( _this.clippingPlanes, camera );
-
-			if ( viewport ) state.viewport( _currentViewport.copy( viewport ) );
 
 			if ( opaqueObjects.length > 0 ) renderObjects( opaqueObjects, scene, camera );
 			if ( transmissiveObjects.length > 0 ) renderObjects( transmissiveObjects, scene, camera );
@@ -1456,11 +1476,6 @@ class WebGLRenderer {
 			const currentToneMapping = _this.toneMapping;
 			_this.toneMapping = NoToneMapping;
 
-			// Remove viewport from camera to avoid nested render calls resetting viewport to it (e.g Reflector).
-			// Transmission render pass requires viewport to match the transmissionRenderTarget.
-			const currentCameraViewport = camera.viewport;
-			if ( camera.viewport !== undefined ) camera.viewport = undefined;
-
 			currentRenderState.setupLightsView( camera );
 
 			if ( _clippingEnabled === true ) clipping.setGlobalState( _this.clippingPlanes, camera );
@@ -1509,8 +1524,6 @@ class WebGLRenderer {
 			_this.setRenderTarget( currentRenderTarget );
 
 			_this.setClearColor( _currentClearColor, _currentClearAlpha );
-
-			if ( currentCameraViewport !== undefined ) camera.viewport = currentCameraViewport;
 
 			_this.toneMapping = currentToneMapping;
 

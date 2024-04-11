@@ -1,3 +1,4 @@
+import { Vector4 } from '../../math/Vector4.js';
 import { WebGLLights } from './WebGLLights.js';
 
 function WebGLRenderState( extensions ) {
@@ -43,6 +44,8 @@ function WebGLRenderState( extensions ) {
 		shadowsArray: shadowsArray,
 
 		lights: lights,
+
+		viewport: new Vector4(),
 
 		transmissionRenderTarget: {}
 	};
